@@ -31,9 +31,9 @@ jobs:
       matrix:
         include:
           - dockerfile: ./Dockerfile
-              platform: linux/amd64
+            platform: linux/amd64
           - dockerfile: ./Dockerfile.arm64
-              platform: linux/arm64
+            platform: linux/arm64
     permissions:
       contents: read
       packages: write
