@@ -26,17 +26,17 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: ./Dockerfile
+              platform: linux/amd64
+          - dockerfile: ./Dockerfile.arm64
+              platform: linux/arm64
     permissions:
       contents: read
       packages: write
-      strategy:
-        fail-fast: false
-        matrix:
-            include:
-            - dockerfile: ./Dockerfile
-              platform: linux/amd64
-            - dockerfile: ./Dockerfile.arm64
-              platform: linux/arm64
       # This is used to complete the identity challenge
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
