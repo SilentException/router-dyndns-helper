@@ -9,7 +9,7 @@ on:
   schedule:
     - cron: '0 3 * * 1'
   push:
-    branches: [ master ]
+    branches: [ develop ]
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   pull_request:
@@ -29,6 +29,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+      strategy:
+        fail-fast: false
+        matrix:
+            include:
+            - dockerfile: ./Dockerfile
+              platform: linux/amd64
+            - dockerfile: ./Dockerfile.arm64
+              platform: linux/arm64
       # This is used to complete the identity challenge
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
@@ -69,17 +77,8 @@ jobs:
         uses: docker/build-push-action@ac9327eae2b366085ac7f6a2d02df8aa8ead720a
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Build and push Docker image(ARM64)
-        id: build-and-push
-        uses: docker/build-push-action@ac9327eae2b366085ac7f6a2d02df8aa8ead720a
-        with:
-          context: ./Dockerfile.arm64
-          platforms: linux/amd64,linux/arm64
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
