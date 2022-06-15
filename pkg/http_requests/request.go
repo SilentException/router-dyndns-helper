@@ -40,8 +40,18 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 		requestUrl = strings.ReplaceAll(httpRequest.Url, ip6addrPlaceholder, ip.String())
 		requestBody = strings.ReplaceAll(httpRequest.Body, ip6addrPlaceholder, ip.String())
 	}
+	requestUrlForLog := requestUrl
+	requestBodyForLog := requestBody
+	for _, usernamePlaceholder := range usernamePlaceholders {
+		requestUrl = strings.ReplaceAll(httpRequest.Url, usernamePlaceholder, httpRequest.Username)
+		requestBody = strings.ReplaceAll(httpRequest.Body, usernamePlaceholder, httpRequest.Username)
+	}
+	for _, passwordPlaceholder := range passwordPlaceholders {
+		requestUrl = strings.ReplaceAll(httpRequest.Url, passwordPlaceholder, httpRequest.Password)
+		requestBody = strings.ReplaceAll(httpRequest.Body, passwordPlaceholder, httpRequest.Password)
+	}
 
-	log.Info(fmt.Sprintf("HTTP request %d: %s %s [%s]", requestIndex, httpRequest.Method, requestUrl, requestBody))
+	log.Info(fmt.Sprintf("HTTP request %d: %s %s [%s]", requestIndex, httpRequest.Method, requestUrlForLog, requestBodyForLog))
 
 	go func() {
 		request, err := retryablehttp.NewRequest(httpRequest.Method, fmt.Sprintf(requestUrl), bytes.NewBufferString(requestBody))
@@ -51,7 +61,7 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 			return
 		}
 
-		if httpRequest.Username != "" && httpRequest.Password != "" {
+		if httpRequest.BasicAuth && httpRequest.Username != "" && httpRequest.Password != "" {
 			request.SetBasicAuth(httpRequest.Username, httpRequest.Password)
 		}
 

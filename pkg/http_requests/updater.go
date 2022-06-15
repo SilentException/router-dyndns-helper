@@ -15,15 +15,19 @@ import (
 const ipaddrPlaceholder string = "<ipaddr>"
 const ip6addrPlaceholder string = "<ip6addr>"
 
+var usernamePlaceholders = [...]string{"<user>", "<uname>", "<username>"}
+var passwordPlaceholders = [...]string{"<pass>", "<passwd>", "<password>"}
+
 type HttpRequest struct {
-	Url      string
-	Method   string
-	Body     string
-	Username string
-	Password string
-	Timeout  time.Duration
-	Onipv4   bool
-	Onipv6   bool
+	Url       string
+	Method    string
+	Body      string
+	Username  string
+	Password  string
+	BasicAuth bool
+	Timeout   time.Duration
+	Onipv4    bool
+	Onipv6    bool
 	//Headers string
 }
 
@@ -63,6 +67,14 @@ func (u *Updater) InitFromEnvironment() error {
 		httpRequestBody := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_BODY", index))
 		httpRequestUsername := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_USERNAME", index))
 		httpRequestPassword := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_PASSWORD", index))
+		httpRequestBasicAuthStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_BASIC_AUTH", index))
+		httpRequestBasicAuth, err := strconv.ParseBool(httpRequestBasicAuthStr)
+		if err != nil {
+			httpRequestBasicAuth = false
+		}
+		if httpRequestBasicAuth && (httpRequestUsername == "" || httpRequestPassword == "") {
+			httpRequestBasicAuth = false
+		}
 		httpRequestTimeoutStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_TIMEOUT", index))
 		if httpRequestTimeoutStr == "" {
 			httpRequestTimeoutStr = "5s"
@@ -98,7 +110,7 @@ func (u *Updater) InitFromEnvironment() error {
 			}
 		}
 
-		httpRequest := HttpRequest{httpRequestUrl, httpRequestMethod, httpRequestBody, httpRequestUsername, httpRequestPassword, httpRequestTimeout, httpRequestOnIpV4, httpRequestOnIpV6}
+		httpRequest := HttpRequest{httpRequestUrl, httpRequestMethod, httpRequestBody, httpRequestUsername, httpRequestPassword, httpRequestBasicAuth, httpRequestTimeout, httpRequestOnIpV4, httpRequestOnIpV6}
 
 		u.Requests = append(u.Requests, httpRequest)
 
