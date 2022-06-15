@@ -1,9 +1,11 @@
 package dyndns
 
 import (
-	log "github.com/sirupsen/logrus"
+	"crypto/subtle"
 	"net"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -11,8 +13,9 @@ type Server struct {
 	out     chan<- *net.IP
 	localIp *net.IP
 
-	Username string
-	Password string
+	Username  string
+	Password  string
+	BasicAuth bool
 }
 
 func NewServer(out chan<- *net.IP, localIp *net.IP) *Server {
@@ -37,13 +40,25 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Info("Received incoming DynDNS update")
 
-	if params.Get("username") != s.Username {
-		s.log.Warn("Rejected due to username mismatch")
+	// check request basic auth, if configured
+	username, password, ok := r.BasicAuth()
+	if s.BasicAuth && !ok {
+		s.log.Warn("Rejected due to basic auth mismatch")
+		w.Header().Set("WWW-Authenticate", "Basic realm=\"Authentication required to access this resource\"")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	if params.Get("password") != s.Password {
-		s.log.Warn("Rejected due to password mismatch")
+	// use request parameters for auth, if basic auth is not configured
+	if !s.BasicAuth {
+		username = params.Get("username")
+		password = params.Get("password")
+	}
+
+	// check username / password match
+	if subtle.ConstantTimeCompare([]byte(username), []byte(s.Username)) != 1 || subtle.ConstantTimeCompare([]byte(password), []byte(s.Password)) != 1 {
+		s.log.Warn("Rejected due to username / password mismatch")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -67,7 +82,6 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.log.WithError(err).Warn("Failed to parse prefix")
 		} else {
-
 			constructedIp := make(net.IP, net.IPv6len)
 			copy(constructedIp, prefix.IP)
 

@@ -143,6 +143,15 @@ func startPushServer(out chan<- *net.IP, localIp *net.IP) {
 	server.Username = os.Getenv("DYNDNS_SERVER_USERNAME")
 	server.Password = os.Getenv("DYNDNS_SERVER_PASSWORD")
 
+	serverBasicAuth, err := strconv.ParseBool(os.Getenv("DYNDNS_SERVER_BASIC_AUTH"))
+	if err != nil {
+		serverBasicAuth = false
+	}
+	if serverBasicAuth && (server.Username == "" || server.Password == "") {
+		serverBasicAuth = false
+	}
+	server.BasicAuth = serverBasicAuth
+
 	s := &http.Server{
 		Addr: bind,
 	}
