@@ -2,11 +2,12 @@ package cloudflare
 
 import (
 	"fmt"
+	"net"
+	"strings"
+
 	cf "github.com/cloudflare/cloudflare-go"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/publicsuffix"
-	"net"
-	"strings"
 )
 
 type Action struct {
@@ -16,6 +17,8 @@ type Action struct {
 }
 
 type Updater struct {
+	log *log.Entry
+
 	ipv4Zones []string
 	ipv6Zones []string
 
@@ -29,6 +32,7 @@ type Updater struct {
 
 func NewUpdater() *Updater {
 	return &Updater{
+		log:    log.WithField("module", "cloudflare"),
 		isInit: false,
 		In:     make(chan *net.IP, 10),
 	}
@@ -129,7 +133,7 @@ func (u *Updater) spawnWorker() {
 	for {
 		select {
 		case ip := <-u.In:
-			log.WithField("ip", ip).Info("Received update request")
+			u.log.WithField("ip", ip).Info("Received update request")
 
 			for _, action := range u.actions {
 				// Skip IPv6 action mismatching IP version
@@ -143,7 +147,7 @@ func (u *Updater) spawnWorker() {
 				}
 
 				// Create detailed sub-logger for this action
-				alog := log.WithField("domain", fmt.Sprintf("%s/IPv%d", action.DnsRecord, action.IpVersion))
+				alog := u.log.WithField("domain", fmt.Sprintf("%s/IPv%d", action.DnsRecord, action.IpVersion))
 
 				// Decide record type on ip version
 				var recordType string
@@ -192,7 +196,7 @@ func (u *Updater) spawnWorker() {
 					// cloudflare-go might revert them to default values.
 					err := u.api.UpdateDNSRecord(action.CfZoneId, record.ID, cf.DNSRecord{
 						Content: ip.String(),
-						TTL: record.TTL,
+						TTL:     record.TTL,
 						Proxied: record.Proxied,
 					})
 

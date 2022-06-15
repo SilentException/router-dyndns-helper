@@ -1,2 +1,16 @@
 .env
 .idea/
+
+# VS Code specifics
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# VS Code Local History
+.history/
+
+# VS CODE Extensions
+*.vsix

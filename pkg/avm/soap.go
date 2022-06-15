@@ -3,8 +3,9 @@ package avm
 import (
 	"bytes"
 	"errors"
-	"gopkg.in/xmlpath.v2"
 	"net"
+
+	"gopkg.in/xmlpath.v2"
 )
 
 func parseGetExternalIPAddressResponse(xml []byte) (net.IP, error) {
