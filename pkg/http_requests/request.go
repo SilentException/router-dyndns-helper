@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"strings"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -18,8 +20,60 @@ type ResponseResult struct {
 	Error          error
 }
 
+type RequestLogger struct {
+	log                   *log.Entry
+	httpRequestIndex      int
+	httpRequestUrl        string
+	httpRequestBody       string
+	httpRequestUrlForLog  string
+	httpRequestBodyForLog string
+}
+
+func (requestLogger RequestLogger) prepareMessageForLog(logMessage string) string {
+	logMessage = strings.ReplaceAll(logMessage, requestLogger.httpRequestUrl, requestLogger.httpRequestUrlForLog)
+	//logMessage = strings.ReplaceAll(logMessage, requestLogger.httpRequestBody, requestLogger.httpRequestBodyForLog) // not really useful in this context and might produce incorrect logs
+	return logMessage
+}
+
+func (requestLogger RequestLogger) prepareErrorForLog(logError error) error {
+	return fmt.Errorf(requestLogger.prepareMessageForLog(logError.Error()))
+}
+
+func (requestLogger RequestLogger) Printf(message string, args ...interface{}) {
+	if requestLogger.log == nil {
+		return
+	}
+	logMessage := requestLogger.prepareMessageForLog(fmt.Sprintf(message, args...))
+
+	if strings.HasPrefix(logMessage, "[ERR") {
+		requestLogger.log.Error(logMessage)
+	} else {
+		requestLogger.log.Debug(logMessage)
+	}
+}
+
+func (requestLogger RequestLogger) LogRequest(logger retryablehttp.Logger, httpRequest *http.Request, retryNumber int) {
+	dumpBytes, err := httputil.DumpRequestOut(httpRequest, true)
+	if err != nil {
+		requestLogger.log.WithError(err).Error("Dumping request for log failed")
+		return
+	}
+	dumpString := string(dumpBytes)
+	requestLogger.log.Trace(dumpString)
+}
+
+func (requestLogger RequestLogger) LogResponse(logger retryablehttp.Logger, httpResponse *http.Response) {
+	dumpBytes, err := httputil.DumpResponse(httpResponse, true)
+	if err != nil {
+		requestLogger.log.WithError(err).Error("Dumping response for log failed")
+		return
+	}
+	dumpString := string(dumpBytes)
+	requestLogger.log.Trace(dumpString)
+}
+
 func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.Entry) chan ResponseResult {
-	result := make(chan ResponseResult)
+	responseResult := make(chan ResponseResult)
 
 	if !httpRequest.Onipv4 && !httpRequest.Onipv6 {
 		return nil
@@ -31,33 +85,39 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 		return nil
 	}
 
-	httpRequestUrl := httpRequest.Url
-	httpRequestBody := httpRequest.Body
 	if ip.To4() != nil {
-		httpRequestUrl = strings.ReplaceAll(httpRequestUrl, ipaddrPlaceholder, ip.String())
-		httpRequestBody = strings.ReplaceAll(httpRequestBody, ipaddrPlaceholder, ip.String())
+		httpRequest.Url = strings.ReplaceAll(httpRequest.Url, ipaddrPlaceholder, ip.String())
+		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, ipaddrPlaceholder, ip.String())
 	} else {
-		httpRequestUrl = strings.ReplaceAll(httpRequest.Url, ip6addrPlaceholder, ip.String())
-		httpRequestBody = strings.ReplaceAll(httpRequestBody, ip6addrPlaceholder, ip.String())
+		httpRequest.Url = strings.ReplaceAll(httpRequest.Url, ip6addrPlaceholder, ip.String())
+		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, ip6addrPlaceholder, ip.String())
 	}
-	httpRequestUrlForLog := httpRequestUrl
-	httpRequestBodyForLog := httpRequestBody
+	httpRequestUrlForLog := httpRequest.Url
+	httpRequestBodyForLog := httpRequest.Body
 	for _, usernamePlaceholder := range usernamePlaceholders {
-		httpRequestUrl = strings.ReplaceAll(httpRequestUrl, usernamePlaceholder, httpRequest.Username)
-		httpRequestBody = strings.ReplaceAll(httpRequestBody, usernamePlaceholder, httpRequest.Username)
+		httpRequest.Url = strings.ReplaceAll(httpRequest.Url, usernamePlaceholder, httpRequest.Username)
+		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, usernamePlaceholder, httpRequest.Username)
 	}
 	for _, passwordPlaceholder := range passwordPlaceholders {
-		httpRequestUrl = strings.ReplaceAll(httpRequestUrl, passwordPlaceholder, httpRequest.Password)
-		httpRequestBody = strings.ReplaceAll(httpRequestBody, passwordPlaceholder, httpRequest.Password)
+		httpRequest.Url = strings.ReplaceAll(httpRequest.Url, passwordPlaceholder, httpRequest.Password)
+		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, passwordPlaceholder, httpRequest.Password)
 	}
 
 	log.Info(fmt.Sprintf("HTTP request %d: %s %s [%s]", requestIndex, httpRequest.Method, httpRequestUrlForLog, httpRequestBodyForLog))
+	requestLogger := &RequestLogger{
+		log:                   log.WithField("submodule", "retryablehttp"),
+		httpRequestIndex:      requestIndex,
+		httpRequestUrl:        httpRequest.Url,
+		httpRequestBody:       httpRequest.Body,
+		httpRequestUrlForLog:  httpRequestUrlForLog,
+		httpRequestBodyForLog: httpRequestBodyForLog,
+	}
 
-	go func() {
-		request, err := retryablehttp.NewRequest(httpRequest.Method, fmt.Sprintf(httpRequestUrl), bytes.NewBufferString(httpRequestBody))
+	go func(httpRequest HttpRequest, requestLogger RequestLogger, responseResult chan ResponseResult) {
+		request, err := retryablehttp.NewRequest(httpRequest.Method, httpRequest.Url, bytes.NewBufferString(httpRequest.Body))
 
 		if err != nil {
-			result <- ResponseResult{requestIndex, "", nil, err}
+			responseResult <- ResponseResult{requestIndex, "", nil, requestLogger.prepareErrorForLog(err)}
 			return
 		}
 
@@ -70,9 +130,11 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 		}
 
 		client := retryablehttp.NewClient()
-		client.Logger = log
+		client.Logger = requestLogger
+		client.RequestLogHook = requestLogger.LogRequest
+		client.ResponseLogHook = requestLogger.LogResponse
 		//client.RetryWaitMax = time.Second * 60
-		client.RetryMax = 6 // 1 minute or so, should be good enough...
+		client.RetryMax = 1 // 1 minute or so, should be good enough...
 		client.HTTPClient.Timeout = httpRequest.Timeout
 
 		response, err := client.Do(request)
@@ -82,19 +144,19 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 			if response != nil {
 				responseStatus = response.Status
 			}
-			result <- ResponseResult{requestIndex, responseStatus, nil, err}
+			responseResult <- ResponseResult{requestIndex, responseStatus, nil, requestLogger.prepareErrorForLog(err)}
 			return
 		}
 
 		body, err := ioutil.ReadAll(response.Body)
 
 		if err != nil {
-			result <- ResponseResult{requestIndex, response.Status, nil, err}
+			responseResult <- ResponseResult{requestIndex, response.Status, nil, requestLogger.prepareErrorForLog(err)}
 			return
 		}
 
-		result <- ResponseResult{requestIndex, response.Status, body, nil}
-	}()
+		responseResult <- ResponseResult{requestIndex, response.Status, body, nil}
+	}(httpRequest, *requestLogger, responseResult)
 
-	return result
+	return responseResult
 }

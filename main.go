@@ -29,6 +29,8 @@ func main() {
 	// Load any env variables defined in .env.dev files
 	_ = godotenv.Load(".env", ".env.dev")
 
+	initLog()
+
 	updaters := createAndStartUpdaters()
 	go spawnUpdateWorker(updaters)
 
@@ -55,6 +57,17 @@ func main() {
 	<-shutdown
 
 	log.Info("Shutdown detected")
+}
+
+func initLog() {
+	// log timestamps & set log level
+	log.SetFormatter(&log.TextFormatter{TimestampFormat: "2006-01-02 15:04:05", FullTimestamp: true})
+	logLevel, err := log.ParseLevel(os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		log.WithError(err).Warn("Failed to parse log level from LOG_LEVEL, using default INFO")
+		logLevel = log.InfoLevel
+	}
+	log.SetLevel(logLevel)
 }
 
 func newFritzBox() *avm.FritzBox {

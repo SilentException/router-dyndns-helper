@@ -156,9 +156,9 @@ func (u *Updater) spawnWorker() {
 					continue
 				}
 				wg.Add(1)
-				go func(chanResponseResult chan ResponseResult) {
+				go func(responseResult chan ResponseResult) {
 					defer wg.Done()
-					requestResponseResult := <-chanResponseResult
+					requestResponseResult := <-responseResult
 					if requestResponseResult.Error != nil {
 						u.log.WithError(requestResponseResult.Error).Error(fmt.Sprintf("HTTP request %d failed", requestResponseResult.RequestIndex))
 					} else {
