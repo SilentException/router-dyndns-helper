@@ -28,7 +28,7 @@ type HttpRequest struct {
 	Timeout   time.Duration
 	Onipv4    bool
 	Onipv6    bool
-	//Headers string
+	Headers   map[string]string
 }
 
 type Updater struct {
@@ -50,24 +50,24 @@ func NewUpdater() *Updater {
 }
 
 func (u *Updater) InitFromEnvironment() error {
-	//index = 1
+	//requestIndex = 1
 	//for {
 	// allows up to 9 custom requests, could go with infinite loop stopping when url is empty but it would be harder to modify existing configuration, this way we allow skipping indexes
-	for index := 1; index < 10; index++ {
+	for requestIndex := 1; requestIndex < 10; requestIndex++ {
 		// read from HTTP_REQUEST_1_*, HTTP_REQUEST_2_* ... HTTP_REQUEST_9_*, skipping when empty request URL
-		httpRequestUrl := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_URL", index))
+		httpRequestUrl := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_URL", requestIndex))
 		if httpRequestUrl == "" {
 			//break
 			continue
 		}
-		httpRequestMethod := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_METHOD", index))
+		httpRequestMethod := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_METHOD", requestIndex))
 		if httpRequestMethod == "" {
 			httpRequestMethod = "GET"
 		}
-		httpRequestBody := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_BODY", index))
-		httpRequestUsername := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_USERNAME", index))
-		httpRequestPassword := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_PASSWORD", index))
-		httpRequestBasicAuthStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_BASIC_AUTH", index))
+		httpRequestBody := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_BODY", requestIndex))
+		httpRequestUsername := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_USERNAME", requestIndex))
+		httpRequestPassword := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_PASSWORD", requestIndex))
+		httpRequestBasicAuthStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_BASIC_AUTH", requestIndex))
 		httpRequestBasicAuth, err := strconv.ParseBool(httpRequestBasicAuthStr)
 		if err != nil {
 			httpRequestBasicAuth = false
@@ -75,7 +75,7 @@ func (u *Updater) InitFromEnvironment() error {
 		if httpRequestBasicAuth && (httpRequestUsername == "" || httpRequestPassword == "") {
 			httpRequestBasicAuth = false
 		}
-		httpRequestTimeoutStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_TIMEOUT", index))
+		httpRequestTimeoutStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_TIMEOUT", requestIndex))
 		if httpRequestTimeoutStr == "" {
 			httpRequestTimeoutStr = "5s"
 		}
@@ -84,15 +84,15 @@ func (u *Updater) InitFromEnvironment() error {
 			if err == nil {
 				err = fmt.Errorf("value %s outside bounds [1s, 60s]", httpRequestTimeout)
 			}
-			log.WithError(err).Warn(fmt.Sprintf("Failed to parse HTTP_REQUEST_%d_TIMEOUT, using default value 5s", index))
+			log.WithError(err).Warn(fmt.Sprintf("Failed to parse HTTP_REQUEST_%d_TIMEOUT, using default value 5s", requestIndex))
 			httpRequestTimeout = time.Duration(5) * time.Second
 		}
-		httpRequestOnIpV4Str := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_ONIPV4", index))
+		httpRequestOnIpV4Str := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_ONIPV4", requestIndex))
 		httpRequestOnIpV4, err := strconv.ParseBool(httpRequestOnIpV4Str)
 		if err != nil {
 			httpRequestOnIpV4 = true
 		}
-		httpRequestOnIpV6Str := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_ONIPV6", index))
+		httpRequestOnIpV6Str := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_ONIPV6", requestIndex))
 		httpRequestOnIpV6, err := strconv.ParseBool(httpRequestOnIpV6Str)
 		if err != nil {
 			httpRequestOnIpV6 = false
@@ -110,7 +110,19 @@ func (u *Updater) InitFromEnvironment() error {
 			}
 		}
 
-		httpRequest := HttpRequest{httpRequestUrl, httpRequestMethod, httpRequestBody, httpRequestUsername, httpRequestPassword, httpRequestBasicAuth, httpRequestTimeout, httpRequestOnIpV4, httpRequestOnIpV6}
+		httpRequestHeaders := make(map[string]string)
+		for requestHeaderIndex := 1; requestHeaderIndex < 10; requestHeaderIndex++ {
+			// read from HTTP_REQUEST_1_HEADER_1_*, HTTP_REQUEST_1_HEADER_1_* ... HTTP_REQUEST_1_HEADER_1_*, skipping when empty header key
+			httpRequestHeaderKey := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_HEADER_%d_KEY", requestIndex, requestHeaderIndex))
+			if httpRequestHeaderKey == "" {
+				//break
+				continue
+			}
+			httpRequestHeaderValue := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_HEADER_%d_VALUE", requestIndex, requestHeaderIndex))
+			httpRequestHeaders[httpRequestHeaderKey] = httpRequestHeaderValue
+		}
+
+		httpRequest := HttpRequest{httpRequestUrl, httpRequestMethod, httpRequestBody, httpRequestUsername, httpRequestPassword, httpRequestBasicAuth, httpRequestTimeout, httpRequestOnIpV4, httpRequestOnIpV6, httpRequestHeaders}
 
 		u.Requests = append(u.Requests, httpRequest)
 

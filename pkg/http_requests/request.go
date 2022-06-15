@@ -31,30 +31,30 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 		return nil
 	}
 
-	var requestUrl string
-	var requestBody string
+	httpRequestUrl := httpRequest.Url
+	httpRequestBody := httpRequest.Body
 	if ip.To4() != nil {
-		requestUrl = strings.ReplaceAll(httpRequest.Url, ipaddrPlaceholder, ip.String())
-		requestBody = strings.ReplaceAll(httpRequest.Body, ipaddrPlaceholder, ip.String())
+		httpRequestUrl = strings.ReplaceAll(httpRequestUrl, ipaddrPlaceholder, ip.String())
+		httpRequestBody = strings.ReplaceAll(httpRequestBody, ipaddrPlaceholder, ip.String())
 	} else {
-		requestUrl = strings.ReplaceAll(httpRequest.Url, ip6addrPlaceholder, ip.String())
-		requestBody = strings.ReplaceAll(httpRequest.Body, ip6addrPlaceholder, ip.String())
+		httpRequestUrl = strings.ReplaceAll(httpRequest.Url, ip6addrPlaceholder, ip.String())
+		httpRequestBody = strings.ReplaceAll(httpRequestBody, ip6addrPlaceholder, ip.String())
 	}
-	requestUrlForLog := requestUrl
-	requestBodyForLog := requestBody
+	httpRequestUrlForLog := httpRequestUrl
+	httpRequestBodyForLog := httpRequestBody
 	for _, usernamePlaceholder := range usernamePlaceholders {
-		requestUrl = strings.ReplaceAll(httpRequest.Url, usernamePlaceholder, httpRequest.Username)
-		requestBody = strings.ReplaceAll(httpRequest.Body, usernamePlaceholder, httpRequest.Username)
+		httpRequestUrl = strings.ReplaceAll(httpRequestUrl, usernamePlaceholder, httpRequest.Username)
+		httpRequestBody = strings.ReplaceAll(httpRequestBody, usernamePlaceholder, httpRequest.Username)
 	}
 	for _, passwordPlaceholder := range passwordPlaceholders {
-		requestUrl = strings.ReplaceAll(httpRequest.Url, passwordPlaceholder, httpRequest.Password)
-		requestBody = strings.ReplaceAll(httpRequest.Body, passwordPlaceholder, httpRequest.Password)
+		httpRequestUrl = strings.ReplaceAll(httpRequestUrl, passwordPlaceholder, httpRequest.Password)
+		httpRequestBody = strings.ReplaceAll(httpRequestBody, passwordPlaceholder, httpRequest.Password)
 	}
 
-	log.Info(fmt.Sprintf("HTTP request %d: %s %s [%s]", requestIndex, httpRequest.Method, requestUrlForLog, requestBodyForLog))
+	log.Info(fmt.Sprintf("HTTP request %d: %s %s [%s]", requestIndex, httpRequest.Method, httpRequestUrlForLog, httpRequestBodyForLog))
 
 	go func() {
-		request, err := retryablehttp.NewRequest(httpRequest.Method, fmt.Sprintf(requestUrl), bytes.NewBufferString(requestBody))
+		request, err := retryablehttp.NewRequest(httpRequest.Method, fmt.Sprintf(httpRequestUrl), bytes.NewBufferString(httpRequestBody))
 
 		if err != nil {
 			result <- ResponseResult{requestIndex, "", nil, err}
@@ -65,7 +65,9 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 			request.SetBasicAuth(httpRequest.Username, httpRequest.Password)
 		}
 
-		//request.Header.Set("Content-Type", "text/plain; charset=utf-8;") // TODO SE - allow custom http request headers ?
+		for requestHeaderKey, requestHeaderValue := range httpRequest.Headers {
+			request.Header.Set(requestHeaderKey, requestHeaderValue)
+		}
 
 		client := retryablehttp.NewClient()
 		client.Logger = log
