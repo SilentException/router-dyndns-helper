@@ -1,5 +1,9 @@
 # github.com/cloudflare/cloudflare-go v0.13.6
 github.com/cloudflare/cloudflare-go
+# github.com/hashicorp/go-cleanhttp v0.5.1
+github.com/hashicorp/go-cleanhttp
+# github.com/hashicorp/go-retryablehttp v0.7.1
+github.com/hashicorp/go-retryablehttp
 # github.com/joho/godotenv v1.3.0
 github.com/joho/godotenv
 # github.com/konsorten/go-windows-terminal-sequences v1.0.1

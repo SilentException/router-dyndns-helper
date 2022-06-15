@@ -31,11 +31,7 @@ func main() {
 
 	initLog()
 
-	updaters := createAndStartUpdaters()
-	go spawnUpdateWorker(updaters)
-
 	ipv6LocalAddress := os.Getenv("DEVICE_LOCAL_ADDRESS_IPV6")
-
 	var localIp net.IP
 	if ipv6LocalAddress != "" {
 		localIp = net.ParseIP(ipv6LocalAddress)
@@ -43,8 +39,11 @@ func main() {
 			log.Error("Failed to parse IP from DEVICE_LOCAL_ADDRESS_IPV6, exiting")
 			return
 		}
-		log.Info("Using the IPv6 Prefix to construct the IPv6 Address")
+		log.Info("Using the IPv6 prefix to construct the IPv6 address")
 	}
+
+	updaters := createAndStartUpdaters()
+	go spawnUpdateWorker(updaters)
 
 	startPollServer(updaters.In, &localIp)
 	startPushServer(updaters.In, &localIp)
@@ -225,6 +224,10 @@ func startPushServer(out chan<- *net.IP, localIp *net.IP) {
 
 func startPollServer(out chan<- *net.IP, localIp *net.IP) {
 	fritzbox := newFritzBox()
+
+	if fritzbox == nil {
+		return
+	}
 
 	// Import endpoint polling interval duration
 	interval := os.Getenv("FRITZBOX_ENDPOINT_INTERVAL")
