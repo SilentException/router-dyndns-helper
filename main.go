@@ -1,27 +1,36 @@
 package main
 
 import (
-	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/avm"
-	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/cloudflare"
-	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/dyndns"
-	"github.com/joho/godotenv"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/avm"
+	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/cloudflare"
+	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/dyndns"
+	"github.com/adrianrudnik/fritzbox-cloudflare-dyndns/pkg/http_requests"
+	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 )
+
+type Updaters struct {
+	CloudFlare   *cloudflare.Updater
+	HttpRequests *http_requests.Updater
+	In           chan *net.IP
+}
 
 func main() {
 	// Load any env variables defined in .env.dev files
 	_ = godotenv.Load(".env", ".env.dev")
 
-	updater := newUpdater()
-	updater.StartWorker()
+	updaters := createAndStartUpdaters()
+	go spawnUpdateWorker(updaters)
 
 	ipv6LocalAddress := os.Getenv("DEVICE_LOCAL_ADDRESS_IPV6")
 
@@ -35,8 +44,8 @@ func main() {
 		log.Info("Using the IPv6 Prefix to construct the IPv6 Address")
 	}
 
-	startPollServer(updater.In, &localIp)
-	startPushServer(updater.In, &localIp)
+	startPollServer(updaters.In, &localIp)
+	startPushServer(updaters.In, &localIp)
 
 	shutdown := make(chan os.Signal)
 
@@ -83,7 +92,32 @@ func newFritzBox() *avm.FritzBox {
 	return fb
 }
 
-func newUpdater() *cloudflare.Updater {
+func createAndStartUpdaters() *Updaters {
+	CloudFlareUpdater := newCloudFlareUpdater()
+	CloudFlareUpdater.StartWorker()
+
+	HttpRequestsUpdater := newHttpRequestsUpdater()
+	HttpRequestsUpdater.StartWorker()
+
+	return &Updaters{
+		CloudFlare:   CloudFlareUpdater,
+		HttpRequests: HttpRequestsUpdater,
+		In:           make(chan *net.IP, 10),
+	}
+}
+
+func spawnUpdateWorker(updaters *Updaters) {
+	for {
+		select {
+		case ip := <-updaters.In:
+			log.WithField("ip", ip).Info("Received update request, sending to all updaters")
+			updaters.CloudFlare.In <- ip
+			updaters.HttpRequests.In <- ip
+		}
+	}
+}
+
+func newCloudFlareUpdater() *cloudflare.Updater {
 	u := cloudflare.NewUpdater()
 
 	token := os.Getenv("CLOUDFLARE_API_TOKEN")
@@ -125,6 +159,19 @@ func newUpdater() *cloudflare.Updater {
 
 	if err != nil {
 		log.WithError(err).Error("Failed to init Cloudflare updater, disabling CloudFlare updates")
+		return u
+	}
+
+	return u
+}
+
+func newHttpRequestsUpdater() *http_requests.Updater {
+	u := http_requests.NewUpdater()
+
+	err := u.InitFromEnvironment()
+
+	if err != nil {
+		log.WithError(err).Error("Failed to init HTTP requests updater, disabling HTTP request updates")
 		return u
 	}
 
