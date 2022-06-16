@@ -26,8 +26,12 @@ type Updaters struct {
 }
 
 func main() {
-	// Load any env variables defined in .env.dev files
-	_ = godotenv.Load(".env", ".env.dev")
+	// Load any env variables defined in .env and .env.dev files
+	if _, err := os.Stat(".env"); err == nil {
+		_ = godotenv.Load(".env", ".env.dev")
+	} else {
+		_ = godotenv.Load(".env.dev")
+	}
 
 	initLog()
 
@@ -61,9 +65,12 @@ func main() {
 func initLog() {
 	// log timestamps & set log level
 	log.SetFormatter(&log.TextFormatter{TimestampFormat: "2006-01-02 15:04:05", FullTimestamp: true})
-	logLevel, err := log.ParseLevel(os.Getenv("LOG_LEVEL"))
+	logLevelEnv := os.Getenv("LOG_LEVEL")
+	logLevel, err := log.ParseLevel(logLevelEnv)
 	if err != nil {
-		log.WithError(err).Warn("Failed to parse log level from LOG_LEVEL, using default INFO")
+		if logLevelEnv != "" {
+			log.WithError(err).Warn("Failed to parse log level from LOG_LEVEL, using default INFO")
+		}
 		logLevel = log.InfoLevel
 	}
 	log.SetLevel(logLevel)
