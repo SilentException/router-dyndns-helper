@@ -139,6 +139,10 @@ func (u *Updater) StartWorker() {
 		return
 	}
 
+	if len(u.Requests) == 0 {
+		return
+	}
+
 	go u.spawnWorker()
 }
 

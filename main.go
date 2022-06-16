@@ -138,7 +138,7 @@ func newCloudFlareUpdater() *cloudflare.Updater {
 
 	if token == "" {
 		if email == "" || key == "" {
-			log.Info("Env CLOUDFLARE_API_TOKEN not found, disabling CloudFlare updates")
+			log.Info("Env CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_EMAIL/CLOUDFLARE_API_KEY not found, disabling CloudFlare updates")
 			return u
 		} else {
 			log.Warn("Using deprecated credentials via the API key")
