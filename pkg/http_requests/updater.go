@@ -12,8 +12,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const ipaddrPlaceholder string = "<ipaddr>"
-const ip6addrPlaceholder string = "<ip6addr>"
+var ip4AddrPlaceholders = [...]string{"<ipaddr>", "<ip>", "<ip4>", "<ipv4>", "<ip4addr>", "<ipv4addr>"}
+var ip6AddrPlaceholders = [...]string{"<ip6addr>", "<ip6>", "<ipv6>", "<ipv6addr>"}
 
 var usernamePlaceholders = [...]string{"<user>", "<uname>", "<username>"}
 var passwordPlaceholders = [...]string{"<pass>", "<passwd>", "<password>"}
@@ -116,10 +116,18 @@ func (u *Updater) InitFromEnvironment() error {
 			httpRequestOnIpV4 = false
 		}
 		if httpRequestOnIpV4 || httpRequestOnIpV6 {
-			if strings.Contains(httpRequestUrl, ipaddrPlaceholder) || strings.Contains(httpRequestBody, ipaddrPlaceholder) {
+			httpRequestContainsIp4 := false
+			for _, ip4AddrPlaceholder := range ip4AddrPlaceholders {
+				httpRequestContainsIp4 = strings.Contains(httpRequestUrl, ip4AddrPlaceholder) || strings.Contains(httpRequestBody, ip4AddrPlaceholder)
+			}
+			httpRequestContainsIp6 := false
+			for _, ip6AddrPlaceholder := range ip6AddrPlaceholders {
+				httpRequestContainsIp6 = strings.Contains(httpRequestUrl, ip6AddrPlaceholder) || strings.Contains(httpRequestBody, ip6AddrPlaceholder)
+			}
+			if httpRequestContainsIp4 {
 				httpRequestOnIpV4 = true
 				httpRequestOnIpV6 = false
-			} else if strings.Contains(httpRequestUrl, ip6addrPlaceholder) || strings.Contains(httpRequestBody, ip6addrPlaceholder) {
+			} else if httpRequestContainsIp6 {
 				httpRequestOnIpV4 = false
 				httpRequestOnIpV6 = true
 			}

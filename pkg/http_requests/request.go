@@ -88,11 +88,15 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 	}
 
 	if ip.To4() != nil {
-		httpRequest.Url = strings.ReplaceAll(httpRequest.Url, ipaddrPlaceholder, ip.String())
-		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, ipaddrPlaceholder, ip.String())
+		for _, ip4AddrPlaceholder := range ip4AddrPlaceholders {
+			httpRequest.Url = strings.ReplaceAll(httpRequest.Url, ip4AddrPlaceholder, ip.String())
+			httpRequest.Body = strings.ReplaceAll(httpRequest.Body, ip4AddrPlaceholder, ip.String())
+		}
 	} else {
-		httpRequest.Url = strings.ReplaceAll(httpRequest.Url, ip6addrPlaceholder, ip.String())
-		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, ip6addrPlaceholder, ip.String())
+		for _, ip6AddrPlaceholder := range ip6AddrPlaceholders {
+			httpRequest.Url = strings.ReplaceAll(httpRequest.Url, ip6AddrPlaceholder, ip.String())
+			httpRequest.Body = strings.ReplaceAll(httpRequest.Body, ip6AddrPlaceholder, ip.String())
+		}
 	}
 	httpRequestUrlForLog := httpRequest.Url
 	httpRequestBodyForLog := httpRequest.Body
