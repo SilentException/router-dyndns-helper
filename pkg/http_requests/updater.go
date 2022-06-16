@@ -19,16 +19,17 @@ var usernamePlaceholders = [...]string{"<user>", "<uname>", "<username>"}
 var passwordPlaceholders = [...]string{"<pass>", "<passwd>", "<password>"}
 
 type HttpRequest struct {
-	Url       string
-	Method    string
-	Body      string
-	Username  string
-	Password  string
-	BasicAuth bool
-	Timeout   time.Duration
-	Onipv4    bool
-	Onipv6    bool
-	Headers   map[string]string
+	Url        string
+	Method     string
+	Body       string
+	Username   string
+	Password   string
+	BasicAuth  bool
+	Timeout    time.Duration
+	RetryCount uint
+	Onipv4     bool
+	Onipv6     bool
+	Headers    map[string]string
 }
 
 type Updater struct {
@@ -74,6 +75,20 @@ func (u *Updater) InitFromEnvironment() error {
 		}
 		if httpRequestBasicAuth && (httpRequestUsername == "" || httpRequestPassword == "") {
 			httpRequestBasicAuth = false
+		}
+		httpRequestRetryCountStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_RETRY_COUNT", requestIndex))
+		// 5 retries is around 30 seconds retry time, each additional retry is extra 30s
+		// 7 retries or about a minute and a half retry time seems like a reasonable default and 14 or 5 minutes seems like a reasonable max
+		if httpRequestRetryCountStr == "" {
+			httpRequestRetryCountStr = "7"
+		}
+		httpRequestRetryCount, err := strconv.ParseUint(httpRequestRetryCountStr, 10, 32)
+		if err != nil || httpRequestRetryCount > 14 {
+			if err == nil {
+				err = fmt.Errorf("value %d outside bounds [0, 14]", httpRequestRetryCount)
+			}
+			log.WithError(err).Warn(fmt.Sprintf("Failed to parse HTTP_REQUEST_%d_RETRY_COUNT, using default value 6", requestIndex))
+			httpRequestRetryCount = 6
 		}
 		httpRequestTimeoutStr := os.Getenv(fmt.Sprintf("HTTP_REQUEST_%d_TIMEOUT", requestIndex))
 		if httpRequestTimeoutStr == "" {
@@ -122,7 +137,7 @@ func (u *Updater) InitFromEnvironment() error {
 			httpRequestHeaders[httpRequestHeaderKey] = httpRequestHeaderValue
 		}
 
-		httpRequest := HttpRequest{httpRequestUrl, httpRequestMethod, httpRequestBody, httpRequestUsername, httpRequestPassword, httpRequestBasicAuth, httpRequestTimeout, httpRequestOnIpV4, httpRequestOnIpV6, httpRequestHeaders}
+		httpRequest := HttpRequest{httpRequestUrl, httpRequestMethod, httpRequestBody, httpRequestUsername, httpRequestPassword, httpRequestBasicAuth, httpRequestTimeout, uint(httpRequestRetryCount), httpRequestOnIpV4, httpRequestOnIpV6, httpRequestHeaders}
 
 		u.Requests = append(u.Requests, httpRequest)
 
@@ -164,9 +179,12 @@ func (u *Updater) spawnWorker() {
 					defer wg.Done()
 					requestResponseResult := <-responseResult
 					if requestResponseResult.Error != nil {
-						u.log.WithError(requestResponseResult.Error).Error(fmt.Sprintf("HTTP request %d failed", requestResponseResult.RequestIndex))
+						u.log.WithField("http_request_index", requestResponseResult.RequestIndex).
+							WithError(requestResponseResult.Error).
+							Error("HTTP request failed")
 					} else {
-						u.log.Info(fmt.Sprintf("HTTP request %d result: [%s] %s", requestResponseResult.RequestIndex, requestResponseResult.ResponseStatus, string(requestResponseResult.Response)))
+						u.log.WithField("http_request_index", requestResponseResult.RequestIndex).
+							Info(fmt.Sprintf("HTTP request result: [%s] %s", requestResponseResult.ResponseStatus, string(requestResponseResult.Response)))
 					}
 				}(responseResult)
 			}

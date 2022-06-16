@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -103,9 +105,9 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 		httpRequest.Body = strings.ReplaceAll(httpRequest.Body, passwordPlaceholder, httpRequest.Password)
 	}
 
-	log.Info(fmt.Sprintf("HTTP request %d: %s %s [%s]", requestIndex, httpRequest.Method, httpRequestUrlForLog, httpRequestBodyForLog))
+	log.WithField("http_request_index", requestIndex).Info(fmt.Sprintf("HTTP request: %s %s [%s]", httpRequest.Method, httpRequestUrlForLog, httpRequestBodyForLog))
 	requestLogger := &RequestLogger{
-		log:                   log.WithField("submodule", "retryablehttp"),
+		log:                   log.WithFields(logrus.Fields{"submodule": "retryablehttp", "http_request_index": requestIndex}),
 		httpRequestIndex:      requestIndex,
 		httpRequestUrl:        httpRequest.Url,
 		httpRequestBody:       httpRequest.Body,
@@ -133,8 +135,8 @@ func doRequest(httpRequest HttpRequest, requestIndex int, ip *net.IP, log *log.E
 		client.Logger = requestLogger
 		client.RequestLogHook = requestLogger.LogRequest
 		client.ResponseLogHook = requestLogger.LogResponse
-		//client.RetryWaitMax = time.Second * 60
-		client.RetryMax = 1 // 1 minute or so, should be good enough...
+		client.RetryWaitMax = time.Second * 30
+		client.RetryMax = int(httpRequest.RetryCount)
 		client.HTTPClient.Timeout = httpRequest.Timeout
 
 		response, err := client.Do(request)
