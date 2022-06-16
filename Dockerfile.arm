@@ -11,7 +11,7 @@ COPY ./ /appbuild
 RUN set -ex \
     && go version \
     && cd /appbuild \
-    && CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -mod=vendor -o server
+    && CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=7 go build -mod=vendor -o server
 
 FROM alpine:latest
 
