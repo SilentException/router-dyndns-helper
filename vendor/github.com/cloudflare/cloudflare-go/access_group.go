@@ -1,10 +1,10 @@
 package cloudflare
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"strconv"
+	"net/http"
 	"time"
 
 	"github.com/pkg/errors"
@@ -104,6 +104,14 @@ type AccessGroupCertificateCommonName struct {
 	} `json:"common_name"`
 }
 
+// AccessGroupExternalEvaluation is used for passing user identity to an external url.
+type AccessGroupExternalEvaluation struct {
+	ExternalEvaluation struct {
+		EvaluateURL string `json:"evaluate_url"`
+		KeysURL     string `json:"keys_url"`
+	} `json:"external_evaluation"`
+}
+
 // AccessGroupGSuite is used to configure access based on GSuite group.
 type AccessGroupGSuite struct {
 	Gsuite struct {
@@ -159,6 +167,20 @@ type AccessGroupAuthMethod struct {
 	} `json:"auth_method"`
 }
 
+// AccessGroupLoginMethod restricts the application to specific IdP instances.
+type AccessGroupLoginMethod struct {
+	LoginMethod struct {
+		ID string `json:"id"`
+	} `json:"login_method"`
+}
+
+// AccessGroupDevicePosture restricts the application to specific devices.
+type AccessGroupDevicePosture struct {
+	DevicePosture struct {
+		ID string `json:"integration_uid"`
+	} `json:"device_posture"`
+}
+
 // AccessGroupListResponse represents the response from the list
 // access group endpoint.
 type AccessGroupListResponse struct {
@@ -179,39 +201,30 @@ type AccessGroupDetailResponse struct {
 // AccessGroups returns all access groups for an access application.
 //
 // API reference: https://api.cloudflare.com/#access-groups-list-access-groups
-func (api *API) AccessGroups(accountID string, pageOpts PaginationOptions) ([]AccessGroup, ResultInfo, error) {
-	return api.accessGroups(accountID, pageOpts, AccountRouteRoot)
+func (api *API) AccessGroups(ctx context.Context, accountID string, pageOpts PaginationOptions) ([]AccessGroup, ResultInfo, error) {
+	return api.accessGroups(ctx, accountID, pageOpts, AccountRouteRoot)
 }
 
 // ZoneLevelAccessGroups returns all zone level access groups for an access application.
 //
 // API reference: https://api.cloudflare.com/#zone-level-access-groups-list-access-groups
-func (api *API) ZoneLevelAccessGroups(zoneID string, pageOpts PaginationOptions) ([]AccessGroup, ResultInfo, error) {
-	return api.accessGroups(zoneID, pageOpts, ZoneRouteRoot)
+func (api *API) ZoneLevelAccessGroups(ctx context.Context, zoneID string, pageOpts PaginationOptions) ([]AccessGroup, ResultInfo, error) {
+	return api.accessGroups(ctx, zoneID, pageOpts, ZoneRouteRoot)
 }
 
-func (api *API) accessGroups(id string, pageOpts PaginationOptions, routeRoot RouteRoot) ([]AccessGroup, ResultInfo, error) {
-	v := url.Values{}
-	if pageOpts.PerPage > 0 {
-		v.Set("per_page", strconv.Itoa(pageOpts.PerPage))
-	}
-	if pageOpts.Page > 0 {
-		v.Set("page", strconv.Itoa(pageOpts.Page))
-	}
-
-	uri := fmt.Sprintf(
-		"/%s/%s/access/groups",
-		routeRoot,
-		id,
+func (api *API) accessGroups(ctx context.Context, id string, pageOpts PaginationOptions, routeRoot RouteRoot) ([]AccessGroup, ResultInfo, error) {
+	uri := buildURI(
+		fmt.Sprintf(
+			"/%s/%s/access/groups",
+			routeRoot,
+			id,
+		),
+		pageOpts,
 	)
 
-	if len(v) > 0 {
-		uri = uri + "?" + v.Encode()
-	}
-
-	res, err := api.makeRequest("GET", uri, nil)
+	res, err := api.makeRequestContext(ctx, http.MethodGet, uri, nil)
 	if err != nil {
-		return []AccessGroup{}, ResultInfo{}, errors.Wrap(err, errMakeRequestError)
+		return []AccessGroup{}, ResultInfo{}, err
 	}
 
 	var accessGroupListResponse AccessGroupListResponse
@@ -226,18 +239,18 @@ func (api *API) accessGroups(id string, pageOpts PaginationOptions, routeRoot Ro
 // AccessGroup returns a single group based on the group ID.
 //
 // API reference: https://api.cloudflare.com/#access-groups-access-group-details
-func (api *API) AccessGroup(accountID, groupID string) (AccessGroup, error) {
-	return api.accessGroup(accountID, groupID, AccountRouteRoot)
+func (api *API) AccessGroup(ctx context.Context, accountID, groupID string) (AccessGroup, error) {
+	return api.accessGroup(ctx, accountID, groupID, AccountRouteRoot)
 }
 
 // ZoneLevelAccessGroup returns a single zone level group based on the group ID.
 //
 // API reference: https://api.cloudflare.com/#zone-level-access-groups-access-group-details
-func (api *API) ZoneLevelAccessGroup(zoneID, groupID string) (AccessGroup, error) {
-	return api.accessGroup(zoneID, groupID, ZoneRouteRoot)
+func (api *API) ZoneLevelAccessGroup(ctx context.Context, zoneID, groupID string) (AccessGroup, error) {
+	return api.accessGroup(ctx, zoneID, groupID, ZoneRouteRoot)
 }
 
-func (api *API) accessGroup(id string, groupID string, routeRoot RouteRoot) (AccessGroup, error) {
+func (api *API) accessGroup(ctx context.Context, id, groupID string, routeRoot RouteRoot) (AccessGroup, error) {
 	uri := fmt.Sprintf(
 		"/%s/%s/access/groups/%s",
 		routeRoot,
@@ -245,9 +258,9 @@ func (api *API) accessGroup(id string, groupID string, routeRoot RouteRoot) (Acc
 		groupID,
 	)
 
-	res, err := api.makeRequest("GET", uri, nil)
+	res, err := api.makeRequestContext(ctx, http.MethodGet, uri, nil)
 	if err != nil {
-		return AccessGroup{}, errors.Wrap(err, errMakeRequestError)
+		return AccessGroup{}, err
 	}
 
 	var accessGroupDetailResponse AccessGroupDetailResponse
@@ -262,27 +275,27 @@ func (api *API) accessGroup(id string, groupID string, routeRoot RouteRoot) (Acc
 // CreateAccessGroup creates a new access group.
 //
 // API reference: https://api.cloudflare.com/#access-groups-create-access-group
-func (api *API) CreateAccessGroup(accountID string, accessGroup AccessGroup) (AccessGroup, error) {
-	return api.createAccessGroup(accountID, accessGroup, AccountRouteRoot)
+func (api *API) CreateAccessGroup(ctx context.Context, accountID string, accessGroup AccessGroup) (AccessGroup, error) {
+	return api.createAccessGroup(ctx, accountID, accessGroup, AccountRouteRoot)
 }
 
 // CreateZoneLevelAccessGroup creates a new zone level access group.
 //
 // API reference: https://api.cloudflare.com/#zone-level-access-groups-create-access-group
-func (api *API) CreateZoneLevelAccessGroup(zoneID string, accessGroup AccessGroup) (AccessGroup, error) {
-	return api.createAccessGroup(zoneID, accessGroup, ZoneRouteRoot)
+func (api *API) CreateZoneLevelAccessGroup(ctx context.Context, zoneID string, accessGroup AccessGroup) (AccessGroup, error) {
+	return api.createAccessGroup(ctx, zoneID, accessGroup, ZoneRouteRoot)
 }
 
-func (api *API) createAccessGroup(id string, accessGroup AccessGroup, routeRoot RouteRoot) (AccessGroup, error) {
+func (api *API) createAccessGroup(ctx context.Context, id string, accessGroup AccessGroup, routeRoot RouteRoot) (AccessGroup, error) {
 	uri := fmt.Sprintf(
 		"/%s/%s/access/groups",
 		routeRoot,
 		id,
 	)
 
-	res, err := api.makeRequest("POST", uri, accessGroup)
+	res, err := api.makeRequestContext(ctx, http.MethodPost, uri, accessGroup)
 	if err != nil {
-		return AccessGroup{}, errors.Wrap(err, errMakeRequestError)
+		return AccessGroup{}, err
 	}
 
 	var accessGroupDetailResponse AccessGroupDetailResponse
@@ -297,21 +310,22 @@ func (api *API) createAccessGroup(id string, accessGroup AccessGroup, routeRoot 
 // UpdateAccessGroup updates an existing access group.
 //
 // API reference: https://api.cloudflare.com/#access-groups-update-access-group
-func (api *API) UpdateAccessGroup(accountID string, accessGroup AccessGroup) (AccessGroup, error) {
-	return api.updateAccessGroup(accountID, accessGroup, AccountRouteRoot)
+func (api *API) UpdateAccessGroup(ctx context.Context, accountID string, accessGroup AccessGroup) (AccessGroup, error) {
+	return api.updateAccessGroup(ctx, accountID, accessGroup, AccountRouteRoot)
 }
 
 // UpdateZoneLevelAccessGroup updates an existing zone level access group.
 //
 // API reference: https://api.cloudflare.com/#zone-level-access-groups-update-access-group
-func (api *API) UpdateZoneLevelAccessGroup(zoneID string, accessGroup AccessGroup) (AccessGroup, error) {
-	return api.updateAccessGroup(zoneID, accessGroup, ZoneRouteRoot)
+func (api *API) UpdateZoneLevelAccessGroup(ctx context.Context, zoneID string, accessGroup AccessGroup) (AccessGroup, error) {
+	return api.updateAccessGroup(ctx, zoneID, accessGroup, ZoneRouteRoot)
 }
 
-func (api *API) updateAccessGroup(id string, accessGroup AccessGroup, routeRoot RouteRoot) (AccessGroup, error) {
+func (api *API) updateAccessGroup(ctx context.Context, id string, accessGroup AccessGroup, routeRoot RouteRoot) (AccessGroup, error) {
 	if accessGroup.ID == "" {
 		return AccessGroup{}, errors.Errorf("access group ID cannot be empty")
 	}
+
 	uri := fmt.Sprintf(
 		"/%s/%s/access/groups/%s",
 		routeRoot,
@@ -319,9 +333,9 @@ func (api *API) updateAccessGroup(id string, accessGroup AccessGroup, routeRoot 
 		accessGroup.ID,
 	)
 
-	res, err := api.makeRequest("PUT", uri, accessGroup)
+	res, err := api.makeRequestContext(ctx, http.MethodPut, uri, accessGroup)
 	if err != nil {
-		return AccessGroup{}, errors.Wrap(err, errMakeRequestError)
+		return AccessGroup{}, err
 	}
 
 	var accessGroupDetailResponse AccessGroupDetailResponse
@@ -336,18 +350,18 @@ func (api *API) updateAccessGroup(id string, accessGroup AccessGroup, routeRoot 
 // DeleteAccessGroup deletes an access group.
 //
 // API reference: https://api.cloudflare.com/#access-groups-delete-access-group
-func (api *API) DeleteAccessGroup(accountID, groupID string) error {
-	return api.deleteAccessGroup(accountID, groupID, AccountRouteRoot)
+func (api *API) DeleteAccessGroup(ctx context.Context, accountID, groupID string) error {
+	return api.deleteAccessGroup(ctx, accountID, groupID, AccountRouteRoot)
 }
 
 // DeleteZoneLevelAccessGroup deletes a zone level access group.
 //
 // API reference: https://api.cloudflare.com/#zone-level-access-groups-delete-access-group
-func (api *API) DeleteZoneLevelAccessGroup(zoneID, groupID string) error {
-	return api.deleteAccessGroup(zoneID, groupID, ZoneRouteRoot)
+func (api *API) DeleteZoneLevelAccessGroup(ctx context.Context, zoneID, groupID string) error {
+	return api.deleteAccessGroup(ctx, zoneID, groupID, ZoneRouteRoot)
 }
 
-func (api *API) deleteAccessGroup(id string, groupID string, routeRoot RouteRoot) error {
+func (api *API) deleteAccessGroup(ctx context.Context, id string, groupID string, routeRoot RouteRoot) error {
 	uri := fmt.Sprintf(
 		"/%s/%s/access/groups/%s",
 		routeRoot,
@@ -355,9 +369,9 @@ func (api *API) deleteAccessGroup(id string, groupID string, routeRoot RouteRoot
 		groupID,
 	)
 
-	_, err := api.makeRequest("DELETE", uri, nil)
+	_, err := api.makeRequestContext(ctx, http.MethodDelete, uri, nil)
 	if err != nil {
-		return errors.Wrap(err, errMakeRequestError)
+		return err
 	}
 
 	return nil

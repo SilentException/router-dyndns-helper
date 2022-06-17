@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -159,7 +160,7 @@ func (u *Updater) spawnWorker() {
 				}
 
 				// Research all current records matching the current scheme
-				records, err := u.api.DNSRecords(action.CfZoneId, cf.DNSRecord{
+				records, err := u.api.DNSRecords(context.Background(), action.CfZoneId, cf.DNSRecord{
 					Type: recordType,
 					Name: action.DnsRecord,
 				})
@@ -173,11 +174,11 @@ func (u *Updater) spawnWorker() {
 				if len(records) == 0 {
 					alog.Info("Creating DNS record")
 
-					_, err := u.api.CreateDNSRecord(action.CfZoneId, cf.DNSRecord{
+					_, err := u.api.CreateDNSRecord(context.Background(), action.CfZoneId, cf.DNSRecord{
 						Type:    recordType,
 						Name:    action.DnsRecord,
 						Content: ip.String(),
-						Proxied: false,
+						Proxied: func(in bool) *bool { return &in }(false),
 						TTL:     120,
 						ZoneID:  action.CfZoneId,
 					})
@@ -194,7 +195,7 @@ func (u *Updater) spawnWorker() {
 
 					// Ensure we submit all required fields even if they did not change,otherwise
 					// cloudflare-go might revert them to default values.
-					err := u.api.UpdateDNSRecord(action.CfZoneId, record.ID, cf.DNSRecord{
+					err := u.api.UpdateDNSRecord(context.Background(), action.CfZoneId, record.ID, cf.DNSRecord{
 						Content: ip.String(),
 						TTL:     record.TTL,
 						Proxied: record.Proxied,
