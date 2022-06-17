@@ -113,39 +113,53 @@ It should look something like this: `::1234:5678:90ab:cdef`
 | --- | --- |
 | DEVICE_LOCAL_ADDRESS_IPV6 | required, enter the local part of the device IP |
 
-## Docker compose setup
+## Docker Compose Setup
 
-Here is an example `docker-compose.yml` with all features activated:
+_Instructions removed, there is no docker image for the project on the Docker Hub (yet?)_
 
-```
-version: '3.7'
+## Docker Build
 
-services:
-  updater:
-    image: adrianrudnik/fritzbox-cloudflare-dyndns
-    network_mode: host
-    # build:
-    #   context: .
-    environment:
-      - FRITZBOX_ENDPOINT_URL=http://fritz.box:49000
-      - FRITZBOX_ENDPOINT_TIMEOUT=30s
-      - FRITZBOX_ENDPOINT_INTERVAL=3s
-      - CLOUDFLARE_API_EMAIL=max@example.com
-      - CLOUDFLARE_API_KEY=demo
-      - CLOUDFLARE_ZONES_IPV4=test.example.com
-      - CLOUDFLARE_ZONES_IPV6=test.example.com
-```
-
-Now we could configure the FRITZ!Box to `http://[docker-host-ip]:49000/ip?v4=<ipaddr>&v6=<ip6addr>&prefix=<ip6lanprefix>` and it should trigger the update process.
-
-## Docker build
-
-More raw approach would be to build and run it yourself:
+Change directory to project root (assumes you did git pull already) and execute image build process. Use the Dockerfile according to the CPU architecture you're working with. I will be using Raspberry Pi (Dockerfile.armhf) for this example, but Dockerfile.arm64 and Dockerfile.amd64 are also possible.
 
 ```
-docker build -t fritzbox-cloudflare-dyndns .
-docker run --rm -it -p 8888:8080 fritzbox-cloudflare-dyndns
+docker build -t silentexception/router-dyndns-helper --file Dockerfile.armhf .
+docker image prune
+```
+__Raspberry Pi OS specific:__
+Docker build will fail with a strange apk update error because the needed library libseccomp2 is too old. Browse to http://ftp.de.debian.org/debian/pool/main/libs/libseccomp/ and find the latest version. Today (17.06.2022), it was libseccomp2_2.5.4-1_armhf.deb.
+```
+wget http://ftp.de.debian.org/debian/pool/main/libs/libseccomp/libseccomp2_X.X.X-X_armhf.deb
+sudo dpkg -i libseccomp2_X.X.X-X_armhf.deb
+```
+(in both commands replace X.X.X-X and use filename with latest version numbers you found)
+
+After we have created the docker image, we need to create and start the container. Before that, create .env file with the settings you desire. You can use .env.dev as a template and add/remove desired features as needed.
+```
+cp .env.dev .env
+nano .env
 ```
 
-If you leave `CLOUDFLARE_*` unconfigured, pushing to CloudFlare will be disabled for testing purposes, so try to
-trigger it by calling `http://127.0.0.1:8888/ip?v4=127.0.0.1&v6=::1` and review the logs.
+After you have settings dialed in, create and start the container. Substitute port 8888 with the desired free port the service will be available at the host machine.
+```
+docker create -t -p 8888:8080 --env-file .env --restart always --name router-dyndns-helper silentexception/router-dyndns-helper
+docker start router-dyndns-helper
+```
+
+If you have previously created image and container and would like to update to latest version or update your settings, first stop and remove the container.
+```
+docker container stop router-dyndns-helper
+docker container rm router-dyndns-helper
+```
+At this point if you just need to update the settings, update .env file as needed and execute docker create / docker start commands above. You're done.
+If you would like to build new version then you need to remove docker image as well in order to build a new one. Don't forget about git pull also...
+```
+docker image rm docker image rm silentexception/router-dyndns-helper:latest
+```
+Now follow the steps above to do a docker build and docker create/ docker start.
+
+Now we could configure the FRITZ!Box to `http://[docker-host-ip]:8888/ip?v4=<ipaddr>&v6=<ip6addr>&prefix=<ip6lanprefix>`.
+If you leave `CLOUDFLARE_*` unconfigured, pushing to CloudFlare will be disabled. Useful for testing purposes, so you can navigate to `http://[docker-host-ip]:8888/ip?v4=127.0.0.1&v6=::1` to trigger update and review the logs.
+
+```
+docker logs router-dyndns-helper
+```
