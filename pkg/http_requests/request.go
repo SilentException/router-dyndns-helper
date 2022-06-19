@@ -65,6 +65,11 @@ func (requestLogger RequestLogger) LogRequest(logger retryablehttp.Logger, httpR
 }
 
 func (requestLogger RequestLogger) LogResponse(logger retryablehttp.Logger, httpResponse *http.Response) {
+	if httpResponse.Request != nil && httpResponse.Status != "" {
+		desc := fmt.Sprintf("%s %s", httpResponse.Request.Method, requestLogger.prepareMessageForLog(fmt.Sprintf("%s", httpResponse.Request.URL)))
+		requestLogger.log.Debug(fmt.Sprintf("[DEBUG] %s response status: %s", desc, httpResponse.Status))
+	}
+
 	dumpBytes, err := httputil.DumpResponse(httpResponse, true)
 	if err != nil {
 		requestLogger.log.WithError(err).Error("Dumping response for log failed")

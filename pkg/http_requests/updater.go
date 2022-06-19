@@ -187,9 +187,13 @@ func (u *Updater) spawnWorker() {
 					defer wg.Done()
 					requestResponseResult := <-responseResult
 					if requestResponseResult.Error != nil {
+						errorMessage := "HTTP request failed"
+						if requestResponseResult.ResponseStatus != "" {
+							errorMessage = fmt.Sprintf("%s [%s] %s", errorMessage, requestResponseResult.ResponseStatus, string(requestResponseResult.Response))
+						}
 						u.log.WithField("http_request_index", requestResponseResult.RequestIndex).
 							WithError(requestResponseResult.Error).
-							Error("HTTP request failed")
+							Error(errorMessage)
 					} else {
 						u.log.WithField("http_request_index", requestResponseResult.RequestIndex).
 							Info(fmt.Sprintf("HTTP request result: [%s] %s", requestResponseResult.ResponseStatus, string(requestResponseResult.Response)))
