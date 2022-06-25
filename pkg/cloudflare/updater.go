@@ -123,17 +123,25 @@ func (u *Updater) init(api *cf.API) error {
 }
 
 func (u *Updater) StartWorker() {
+	go u.spawnWorker()
+}
+
+func (u *Updater) shouldProcessUpdates() bool {
 	if !u.isInit {
-		return
+		return false
 	}
 
-	go u.spawnWorker()
+	return true
 }
 
 func (u *Updater) spawnWorker() {
 	for {
 		select {
 		case ip := <-u.In:
+			if !u.shouldProcessUpdates() {
+				continue
+			}
+
 			u.log.WithField("ip", ip).Info("Received update request")
 
 			for _, action := range u.actions {
